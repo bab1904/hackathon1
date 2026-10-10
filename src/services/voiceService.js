@@ -5,34 +5,58 @@ class VoiceService {
   constructor() {
     this.recognition = null;
     this.isSupported = false;
+    this.currentUtterance = null;
     this.initSpeechRecognition();
   }
 
   initSpeechRecognition() {
+    if (typeof window === "undefined") return;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       this.isSupported = true;
-      this.recognition = new SpeechRecognition();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = false;
-      this.recognition.maxAlternatives = 1;
+      try {
+        this.recognition = new SpeechRecognition();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = true;
+        this.recognition.maxAlternatives = 1;
+      } catch (e) {
+        console.warn("Speech recognition initialization error:", e);
+        this.isSupported = false;
+      }
     } else {
       this.isSupported = false;
     }
   }
 
-  startListening({ lang = "te", onResult, onError, onEnd }) {
+  startListening({ lang = "te", onResult, onInterim, onError, onEnd }) {
     if (!this.isSupported || !this.recognition) {
       if (onError) onError({ error: "not_supported", message: "Speech recognition is not supported in this browser." });
       return;
     }
 
     try {
+      this.stopListening();
       this.recognition.lang = lang === "te" ? "te-IN" : "en-IN";
 
       this.recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        if (onResult) onResult(transcript);
+        let finalTranscript = "";
+        let interimTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        if (interimTranscript && onInterim) {
+          onInterim(interimTranscript);
+        }
+
+        if (finalTranscript && onResult) {
+          onResult(finalTranscript.trim());
+        }
       };
 
       this.recognition.onerror = (event) => {
@@ -52,7 +76,7 @@ class VoiceService {
   stopListening() {
     if (this.recognition) {
       try {
-        this.recognition.stop();
+        this.recognition.abort();
       } catch {
         // ignore already stopped
       }
@@ -60,49 +84,72 @@ class VoiceService {
   }
 
   speak(text, lang = "te", onEnd = null) {
-    if (!('speechSynthesis' in window)) {
+    if (typeof window === "undefined" || !('speechSynthesis' in window)) {
       if (onEnd) onEnd();
       return;
     }
 
-    // Cancel any ongoing speech
-    window.speechSynthesis.cancel();
+    try {
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = lang === "te" ? "te-IN" : "en-IN";
-    utterance.rate = 0.95; // slightly slower for clear comprehension
-    utterance.pitch = 1.0;
-
-    // Pick best available voice
-    const voices = window.speechSynthesis.getVoices();
-    if (lang === "te") {
-      const teluguVoice = voices.find(v => v.lang.includes("te") || v.name.toLowerCase().includes("telugu"));
-      if (teluguVoice) {
-        utterance.voice = teluguVoice;
+      // Clean HTML tags or symbols
+      const cleanText = text.replace(/<[^>]*>?/gm, '').replace(/[✅❌⚠️🚨💉💊📅]/g, '').trim();
+      if (!cleanText) {
+        if (onEnd) onEnd();
+        return;
       }
-    } else {
-      const inVoice = voices.find(v => v.lang.includes("en-IN") || v.name.toLowerCase().includes("india"));
-      if (inVoice) {
-        utterance.voice = inVoice;
+
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      utterance.lang = lang === "te" ? "te-IN" : "en-IN";
+      utterance.rate = 0.92; // Slightly paced for high comprehension in medical context
+      utterance.pitch = 1.0;
+
+      // Pick best available voice
+      const voices = window.speechSynthesis.getVoices();
+      if (lang === "te") {
+        const teluguVoice = voices.find(v => v.lang.includes("te") || v.name.toLowerCase().includes("telugu"));
+        if (teluguVoice) {
+          utterance.voice = teluguVoice;
+        }
+      } else {
+        const inVoice = voices.find(v => v.lang.includes("en-IN") || v.name.toLowerCase().includes("india"));
+        if (inVoice) {
+          utterance.voice = inVoice;
+        }
       }
-    }
 
-    if (onEnd) {
-      utterance.onend = onEnd;
-      utterance.onerror = onEnd;
-    }
+      utterance.onend = () => {
+        this.currentUtterance = null;
+        if (onEnd) onEnd();
+      };
 
-    window.speechSynthesis.speak(utterance);
+      utterance.onerror = (e) => {
+        this.currentUtterance = null;
+        if (onEnd) onEnd();
+      };
+
+      this.currentUtterance = utterance;
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.warn("SpeechSynthesis error:", err);
+      if (onEnd) onEnd();
+    }
   }
 
   stopSpeaking() {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (typeof window !== "undefined" && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        // ignore
+      }
+      this.currentUtterance = null;
     }
   }
 
   isSpeaking() {
-    return 'speechSynthesis' in window ? window.speechSynthesis.speaking : false;
+    return typeof window !== "undefined" && 'speechSynthesis' in window ? window.speechSynthesis.speaking : false;
   }
 }
 

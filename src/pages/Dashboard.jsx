@@ -2,13 +2,15 @@ import React from 'react';
 import {
   Heart, Calendar, Syringe, Pill, Building2, AlertOctagon,
   Mic, Sparkles, FileText, ArrowRight, Clock, MapPin,
-  Baby, Utensils, ShieldAlert, Phone
+  Baby, Utensils, ShieldAlert, Phone, UserCheck, Users
 } from 'lucide-react';
 import { calculateGestationalAge, calculateChildAge, formatDate, getTodayKey } from '../services/dateUtils';
 import QuickActions from '../components/QuickActions';
 import DailyMedicationCard from '../components/DailyMedicationCard';
 import OfflineBadge from '../components/OfflineBadge';
 import { nearbyHospitalsData } from '../data/nearbyHospitalsData';
+import AshaTriageDashboard from '../components/AshaTriageDashboard';
+import SpeechButton from '../components/SpeechButton';
 
 export default function Dashboard({
   profile,
@@ -21,8 +23,21 @@ export default function Dashboard({
   onNavigatePage,
   onOpenVoice,
   onOpenEmergency,
+  onSwitchStage,
   lang = "te"
 }) {
+  // If in ASHA Worker Mode, structurally transform into Dynamic Village Roster & Multi-Patient Triage Dashboard
+  if (profile.stage === "asha") {
+    return (
+      <AshaTriageDashboard
+        profile={profile}
+        onSwitchStage={onSwitchStage}
+        onNavigatePage={onNavigatePage}
+        lang={lang}
+      />
+    );
+  }
+
   const isPregnant = profile.stage === "pregnant";
   const isPostpartum = profile.stage === "postpartum";
   const isChildCare = profile.stage === "caregiver";
@@ -45,8 +60,40 @@ export default function Dashboard({
     return lang === "te" ? "శుభ సాయంత్రం" : "Good Evening";
   };
 
+  const getGreetingReadout = () => {
+    if (isPregnant) {
+      return lang === "te"
+        ? `శుభోదయం లక్ష్మీ దేవి. మీరు గర్భధారణ 24వ వారంలో ఉన్నారు. మీ రోజువారీ ఐరన్ మరియు క్యాల్షియం మాత్రలు వేసుకున్నారో లేదో కింద తనిఖీ చేయండి.`
+        : `Good morning Lakshmi Devi. You are in pregnancy week 24. Check off your daily Iron and Calcium tablets below.`;
+    }
+    return lang === "te"
+      ? `నమస్కారం. గ్రామమా మాతా శిశు సంరక్షణ డాష్‌బోర్డ్‌కు స్వాగతం.`
+      : `Welcome to GramaMaa Maternal and Child Care Dashboard.`;
+  };
+
   return (
     <div className="space-y-6">
+      {/* PERSPECTIVE SWITCHER QUICK PILL BAR */}
+      <div className="flex items-center justify-between p-3 rounded-2xl bg-teal-50 border border-teal-200 text-teal-950 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-bold">
+            {lang === "te" ? "దృక్పథం (Perspective):" : "Care Perspective:"}
+          </span>
+          <span className="font-extrabold text-teal-800 bg-white px-2.5 py-0.5 rounded-lg border border-teal-200">
+            {isPregnant ? "🤰 Pregnancy" : isPostpartum ? "🤱 New Mother" : "👶 Child Care"}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onSwitchStage("asha")}
+          className="px-3 py-1.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-black text-xs transition flex items-center gap-1.5 shadow-xs"
+        >
+          <UserCheck className="w-3.5 h-3.5" />
+          <span>{lang === "te" ? "ఆశా వర్కర్ మోడ్‌కి మారండి" : "Switch to ASHA Worker Mode"}</span>
+        </button>
+      </div>
+
       {/* Top Welcome Banner */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div className="space-y-1">
@@ -54,6 +101,7 @@ export default function Dashboard({
             <span className="text-xs font-bold text-teal-800 uppercase tracking-wider">
               {getGreeting()}, {lang === "te" ? profile.nameTe || profile.name : profile.name}
             </span>
+            <SpeechButton text={getGreetingReadout()} lang={lang} size="xs" />
             <span className="text-slate-300">•</span>
             <OfflineBadge lang={lang} />
           </div>
@@ -73,9 +121,6 @@ export default function Dashboard({
               lang === "te"
                 ? `శిశువు ఎదుగుదల & టీకాలు (${childAge.labelTe})`
                 : `Child Care & Vaccines (${childAge.labelEn})`
-            )}
-            {profile.stage === "asha" && (
-              lang === "te" ? "ఆశా కార్యకర్త - గ్రామీణ సంరక్షణ డాష్‌బోర్డ్" : "ASHA Community Worker Dashboard"
             )}
           </h1>
 
@@ -104,7 +149,7 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* TODAY'S MEDICINE TRACKER CARD (User's specific requirement) */}
+      {/* TODAY'S MEDICINE TRACKER CARD (User's specific requirement with Safety Box) */}
       <DailyMedicationCard
         medications={medications}
         dailyDoses={dailyDoses}
@@ -142,29 +187,33 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Two Column Layout: Upcoming Checkup & Preferred Hospital */}
+      {/* Quick Action Matrix Grid */}
+      <QuickActions onNavigatePage={onNavigatePage} lang={lang} />
+
+      {/* Two Column Grid: Upcoming Visits & Emergency Speed Dial */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Next Appointment Card */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200">
-                {lang === "te" ? "తర్వాతి డాక్టర్ పరీక్ష" : "Next Scheduled Visit"}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
+                {lang === "te" ? "తర్వాతి వైద్య పరీక్ష" : "Next Scheduled Visit"}
               </span>
-              <Calendar className="w-4 h-4 text-slate-400" />
+              <Calendar className="w-4 h-4 text-teal-700" />
             </div>
 
             {nextAppt ? (
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <h3 className="font-bold text-slate-900 text-base">
                   {lang === "te" ? nextAppt.titleTe || nextAppt.title : nextAppt.title}
                 </h3>
-                <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium">
-                  <Clock className="w-3.5 h-3.5 text-teal-600" />
-                  <span>{formatDate(nextAppt.date, lang)} at {nextAppt.time}</span>
+                <p className="text-xs text-slate-600 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{formatDate(nextAppt.date, lang)} • {nextAppt.time}</span>
                 </p>
-                <p className="text-xs text-slate-500">
-                  {nextAppt.doctor} • {lang === "te" ? nextAppt.facilityTe || nextAppt.facility : nextAppt.facility}
+                <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{nextAppt.doctor} ({nextAppt.facility})</span>
                 </p>
               </div>
             ) : (
@@ -174,51 +223,50 @@ export default function Dashboard({
             )}
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+          <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
             <span className="text-[11px] text-slate-400">
-              {lang === "te" ? "MCP కార్డు వెంట ఉంచుకోండి" : "Bring MCP card with you"}
+              {lang === "te" ? "MCP కార్డు తీసుకెళ్లడం మర్చిపోవద్దు" : "Carry your physical MCP card"}
             </span>
             <button
               onClick={() => onNavigatePage("appointments")}
               className="text-xs font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1"
             >
-              <span>{lang === "te" ? "అపాయింట్‌మెంట్లు" : "Manage Visits"}</span>
+              <span>{lang === "te" ? "క్యాలెండర్ చూడండి" : "Open Calendar"}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Preferred Emergency Hospital Card */}
+        {/* Hospital Card */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200">
-                {lang === "te" ? "మీ అత్యవసర డెలివరీ ఆసుపత్రి" : "Your Emergency Hospital"}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
+                {lang === "te" ? "ముఖ్య ప్రసవ ఆసుపత్రి" : "Delivery Hospital"}
               </span>
-              <Building2 className="w-4 h-4 text-slate-400" />
+              <Building2 className="w-4 h-4 text-teal-700" />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <h3 className="font-bold text-slate-900 text-base">
                 {lang === "te" ? prefHosp.nameTe || prefHosp.name : prefHosp.name}
               </h3>
-              <p className="text-xs text-slate-600 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-teal-600" />
-                <span>{prefHosp.distanceKm} • {lang === "te" ? prefHosp.addressTe || prefHosp.address : prefHosp.address}</span>
+              <p className="text-xs text-slate-600">
+                {prefHosp.doctorInCharge} • {prefHosp.distanceKm}
               </p>
-              <p className="text-xs text-emerald-700 font-semibold">
-                ✓ 24/7 Labor Room • Free Delivery Schemes
+              <p className="text-xs text-slate-500">
+                {lang === "te" ? prefHosp.addressTe || prefHosp.address : prefHosp.address}
               </p>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+          <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
             <a
-              href={`tel:${prefHosp.phone}`}
-              className="px-3 py-1.5 rounded-xl bg-teal-50 text-teal-800 hover:bg-teal-100 font-bold text-xs flex items-center gap-1.5 transition"
+              href={`tel:${prefHosp.phone.replace(/[^0-9+]/g, '')}`}
+              className="px-3 py-1.5 rounded-xl bg-teal-50 text-teal-800 font-bold text-xs flex items-center gap-1.5 border border-teal-200 hover:bg-teal-100"
             >
-              <Phone className="w-3.5 h-3.5 text-teal-700" />
-              <span>{lang === "te" ? "కాల్ చేయండి" : "Call Hospital"}</span>
+              <Phone className="w-3 h-3 text-teal-700" />
+              <span>{prefHosp.phone}</span>
             </a>
 
             <button
@@ -229,30 +277,6 @@ export default function Dashboard({
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
-      </div>
-
-      {/* Quick Actions Grid */}
-      <QuickActions
-        onActionClick={onNavigatePage}
-        onOpenVoice={onOpenVoice}
-        lang={lang}
-      />
-
-      {/* Nutrition Tip of the Day */}
-      <div className="bg-sage-50 border border-sage-200 rounded-3xl p-5 sm:p-6 text-sage-900 flex items-start gap-4">
-        <div className="p-3 rounded-2xl bg-white shadow-xs text-sage-700 shrink-0">
-          <Utensils className="w-6 h-6" />
-        </div>
-        <div className="space-y-1">
-          <h3 className="font-bold text-sm text-sage-950">
-            {lang === "te" ? "ఈనాటి పౌష్టికాహార సలహా (తల్లి & బిడ్డ ఆరోగ్యం)" : "Today's Nutrition Advice"}
-          </h3>
-          <p className="text-xs text-sage-800 leading-relaxed">
-            {lang === "te"
-              ? "రాగి జావలో మరియు ఆకుకూరల్లో ఐరన్, క్యాల్షియం సమృద్ధిగా ఉంటాయి. భోజనం తర్వాత ఒక గ్లాసు నిమ్మరసం నీళ్లు తాగడం వల్ల ఐరన్ శరీరానికి బాగా అందుతుంది. పాలు, టీ తాగేటప్పుడు ఐరన్ మాత్రలు వేసుకోవద్దు."
-              : "Ragi malt and green leafy vegetables (Palak, Methi) are rich in iron and calcium. Taking lemon water enhances iron absorption. Avoid tea or coffee immediately after taking iron supplements."}
-          </p>
         </div>
       </div>
     </div>

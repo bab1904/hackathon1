@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Mic, MicOff, Volume2, VolumeX, Send, X, AlertCircle,
-  HelpCircle, Sparkles, ArrowRight
+  Sparkles, ArrowRight, ShieldAlert, Phone, Calendar, Pill, Radio
 } from 'lucide-react';
 import { voiceService } from '../services/voiceService';
 import { findVoiceResponse } from '../data/voiceKnowledgeBase';
@@ -15,70 +15,70 @@ export default function VoiceAssistantModal({
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentLang, setCurrentLang] = useState(lang);
-  const [transcript, setTranscript] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
   const [inputText, setInputText] = useState("");
-  const [messages, setMessages] = useState([
-    {
-      sender: "assistant",
-      text: lang === "te"
-        ? "నమస్కారం! నేను గ్రామమా AI వాయిస్ సహచరిని. మీ రోజువారీ మందులు, టీకాలు, గర్భ పరీక్షలు, లేదా దగ్గరి ఆసుపత్రుల గురించి నన్ను అడగండి."
-        : "Hello! I am your GramaMaa AI Voice Companion. Ask me about your daily medicines, baby vaccines, checkups, or nearby hospitals.",
-      actionPage: null
-    }
-  ]);
+  const [statusMessage, setStatusMessage] = useState("");
   const [voiceError, setVoiceError] = useState(null);
+  const [lastAction, setLastAction] = useState(null);
 
+  // Sync prop language
   useEffect(() => {
     setCurrentLang(lang);
   }, [lang]);
 
-  // Clean up when modal closes
+  // When modal opens, automatically start listening for instant, natural interaction
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      setLiveTranscript("");
+      setVoiceError(null);
+      setLastAction(null);
+      startListeningSession();
+    } else {
       voiceService.stopListening();
       voiceService.stopSpeaking();
       setIsListening(false);
       setIsSpeaking(false);
     }
-  }, [isOpen]);
+  }, [isOpen, currentLang]);
 
-  const handleStartListening = () => {
+  const startListeningSession = () => {
     setVoiceError(null);
     setIsListening(true);
-    setTranscript("");
+    setStatusMessage(
+      currentLang === "te"
+        ? "వింటున్నాను... మాట్లాడండి ('SOS', 'మందులు', లేదా 'అపాయింట్‌మెంట్లు')..."
+        : "Listening... Say 'SOS', 'Medicines / Prescription', or 'Appointments'..."
+    );
 
     voiceService.startListening({
       lang: currentLang,
-      onResult: (text) => {
+      onInterim: (text) => {
+        setLiveTranscript(text);
+      },
+      onResult: (finalText) => {
         setIsListening(false);
-        setTranscript(text);
-        processUserQuery(text);
+        setLiveTranscript(finalText);
+        processSpokenCommand(finalText);
       },
       onError: (err) => {
         setIsListening(false);
         if (err.error === "not-allowed" || err.error === "permission-denied") {
           setVoiceError(
             currentLang === "te"
-              ? "మైక్రోఫోన్ అనుమతి నిరాకరించబడింది. దయచేసి బ్రౌజర్ సెట్టింగ్స్‌లో మైక్ ఆన్ చేయండి లేదా క్రింద టైప్ చేయండి."
-              : "Microphone permission denied. Please allow microphone access in browser or type your question below."
+              ? "మైక్రోఫోన్ అనుమతి నిరాకరించబడింది. దయచేసి బ్రౌజర్ లో అనుమతి ఇవ్వండి లేదా క్రింది బటన్లను వాడండి."
+              : "Microphone permission denied. Allow mic access in browser, or use quick action chips below."
           );
         } else if (err.error === "no-speech") {
           setVoiceError(
             currentLang === "te"
-              ? "శబ్దం వినిపించలేదు. దయచేసి మైక్ బటన్ నొక్కి మళ్లీ మాట్లాడండి."
-              : "No speech detected. Please tap the mic and speak clearly."
-          );
-        } else if (err.error === "not_supported") {
-          setVoiceError(
-            currentLang === "te"
-              ? "మీ బ్రౌజర్ లో వాయిస్ రికగ్నిషన్ సపోర్ట్ లేదు. మీరు క్రింద టైప్ చేసి సమాధానం పొందవచ్చు."
-              : "Speech recognition not supported on this browser. You can type below to ask questions."
+              ? "మాట వినిపించలేదు. మైక్ బటన్ నొక్కి మళ్ళీ మాట్లాడండి."
+              : "No speech heard. Tap the mic button to speak again."
           );
         } else {
           setVoiceError(
             currentLang === "te"
-              ? "వాయిస్ రికగ్నిషన్ లో సమస్య వచ్చింది. దయచేసి మళ్లీ ప్రయత్నించండి."
-              : "Voice error occurred. Please try speaking again or use text."
+              ? "వాయిస్ సపోర్ట్ అందుబాటులో లేదు. క్రింద టైప్ చేయండి లేదా బటన్ నొక్కండి."
+              : "Voice recognition unavailable. Type below or tap quick keywords."
           );
         }
       },
@@ -93,121 +93,84 @@ export default function VoiceAssistantModal({
     setIsListening(false);
   };
 
-  const processUserQuery = (queryText) => {
-    if (!queryText || !queryText.trim()) return;
+  const processSpokenCommand = (text) => {
+    if (!text || !text.trim()) return;
 
-    // Add user message
-    const newMessages = [
-      ...messages,
-      { sender: "user", text: queryText }
-    ];
+    const result = findVoiceResponse(text, currentLang);
+    setLastAction(result);
 
-    const result = findVoiceResponse(queryText, currentLang);
-
-    // Speak response
+    // Speak audio readout
     setIsSpeaking(true);
     voiceService.speak(result.speakText, currentLang, () => {
       setIsSpeaking(false);
     });
 
-    // Add assistant response
-    setMessages([
-      ...newMessages,
-      {
-        sender: "assistant",
-        text: result.displayText,
-        actionPage: result.actionPage
-      }
-    ]);
-
-    // If an action page was requested (e.g., emergency, medicines, hospitals)
+    // If an action page was matched (SOS / Medicines / Appointments)
     if (result.actionPage && onNavigatePage) {
       setTimeout(() => {
         onNavigatePage(result.actionPage);
         onClose();
-      }, 2400);
+      }, 1600);
     }
   };
 
-  const handleTextSubmit = (e) => {
+  const handleManualSubmit = (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
-    const text = inputText;
+    const query = inputText;
     setInputText("");
-    processUserQuery(text);
+    setLiveTranscript(query);
+    processSpokenCommand(query);
   };
 
-  const handlePromptChipClick = (prompt) => {
-    processUserQuery(prompt);
+  const handleQuickKeyword = (keyword) => {
+    setLiveTranscript(keyword);
+    processSpokenCommand(keyword);
   };
 
-  const handleToggleSpeak = (text) => {
-    if (isSpeaking) {
-      voiceService.stopSpeaking();
-      setIsSpeaking(false);
-    } else {
-      setIsSpeaking(true);
-      voiceService.speak(text, currentLang, () => {
-        setIsSpeaking(false);
-      });
-    }
+  const toggleLanguage = () => {
+    const next = currentLang === "te" ? "en" : "te";
+    setCurrentLang(next);
   };
 
   if (!isOpen) return null;
 
-  const promptChipsTe = [
-    "నా ఈరోజు మందులు ఏవి?",
-    "దగ్గర్లోని ఆసుపత్రి ఎక్కడ?",
-    "నా తర్వాతి చెకప్ ఎప్పుడు?",
-    "బిడ్డ టీకాల షెడ్యూల్",
-    "పాలివ్వడంలో సమస్య ఉంది",
-    "గర్భధారణ ఆహార సలహాలు",
-    "అత్యవసర సహాయం (112)"
-  ];
-
-  const promptChipsEn = [
-    "What are my medicines today?",
-    "Show nearby hospitals",
-    "When is my next checkup?",
-    "Baby vaccination schedule",
-    "Breastfeeding help",
-    "Pregnancy food ideas",
-    "Emergency SOS help"
-  ];
-
-  const currentChips = currentLang === "te" ? promptChipsTe : promptChipsEn;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-teal-700 via-teal-800 to-teal-900 text-white p-5 flex items-center justify-between">
+      <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col transition-all">
+        {/* Micro-Modal Header */}
+        <div className="bg-gradient-to-r from-teal-800 via-teal-700 to-teal-900 text-white p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20">
-              <Sparkles className="w-5 h-5 text-teal-200" />
+              <Radio className="w-5 h-5 text-teal-200 animate-pulse" />
             </div>
             <div>
-              <h2 className="text-base font-bold flex items-center gap-2">
-                {currentLang === "te" ? "గ్రామమా AI వాయిస్ సహచరి" : "GramaMaa AI Voice Companion"}
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/30 font-semibold border border-teal-400/30">
-                  {currentLang === "te" ? "తెలుగు" : "English"}
-                </span>
-              </h2>
-              <p className="text-xs text-teal-200">
-                {currentLang === "te" ? "మాట్లాడండి లేదా ప్రశ్నను ఎంచుకోండి" : "Speak naturally or tap a question"}
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm sm:text-base font-extrabold tracking-tight">
+                  {currentLang === "te" ? "వాయిస్ అసిస్టెంట్ వింటోంది..." : "Voice Assistant Listening..."}
+                </h3>
+              </div>
+              <p className="text-[11px] text-teal-200">
+                {currentLang === "te"
+                  ? "స్పష్టంగా మాట్లాడండి లేదా కీవర్డ్ చెప్పండి"
+                  : "Speak naturally or say a keyword"}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Lang switch */}
+            {/* Telugu / English Language Switcher */}
             <button
-              onClick={() => setCurrentLang(currentLang === "te" ? "en" : "te")}
-              className="text-xs px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 transition border border-white/20 font-bold"
+              type="button"
+              onClick={toggleLanguage}
+              className="text-xs px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 transition border border-white/20 font-bold flex items-center gap-1"
+              title="Toggle Audio Readout Language"
             >
-              {currentLang === "te" ? "English" : "తెలుగు"}
+              <span>{currentLang === "te" ? "తెలుగు 🔊" : "English 🔊"}</span>
             </button>
+
             <button
+              type="button"
               onClick={onClose}
               className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition text-white"
             >
@@ -216,141 +179,141 @@ export default function VoiceAssistantModal({
           </div>
         </div>
 
-        {/* Chat History Container */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-3 bg-slate-50/70">
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+        {/* Live Audio Visualizer & Real-time Transcript */}
+        <div className="p-6 bg-slate-50/70 flex flex-col items-center text-center space-y-4">
+          {/* Animated Wave Pulsing Circle */}
+          <div className="relative">
+            {isListening && (
+              <span className="absolute -inset-3 rounded-full bg-teal-400/30 animate-ping"></span>
+            )}
+            <button
+              type="button"
+              onClick={isListening ? handleStopListening : startListeningSession}
+              className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center text-white shadow-xl transition-all transform active:scale-95 ${
+                isListening
+                  ? "bg-red-600 hover:bg-red-700 ring-4 ring-red-200 animate-pulse"
+                  : "bg-teal-700 hover:bg-teal-800 ring-4 ring-teal-100"
+              }`}
             >
-              <div
-                className={`max-w-[85%] rounded-2xl p-3.5 text-sm leading-relaxed shadow-xs ${
-                  msg.sender === "user"
-                    ? "bg-teal-700 text-white rounded-br-xs"
-                    : "bg-white text-slate-800 border border-slate-200/80 rounded-bl-xs"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p>{msg.text}</p>
-                  {msg.sender === "assistant" && (
-                    <button
-                      onClick={() => handleToggleSpeak(msg.text)}
-                      className="text-slate-400 hover:text-teal-700 p-1 shrink-0"
-                      title="Read aloud"
-                    >
-                      {isSpeaking ? <VolumeX className="w-4 h-4 text-teal-600" /> : <Volume2 className="w-4 h-4" />}
-                    </button>
-                  )}
-                </div>
+              {isListening ? (
+                <MicOff className="w-8 h-8 animate-bounce" />
+              ) : (
+                <Mic className="w-8 h-8" />
+              )}
+            </button>
+          </div>
 
-                {msg.actionPage && (
-                  <button
-                    onClick={() => {
-                      if (onNavigatePage) {
-                        onNavigatePage(msg.actionPage);
-                        onClose();
-                      }
-                    }}
-                    className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition border border-teal-200"
-                  >
-                    <span>
-                      {currentLang === "te" ? "పేజీని తెరవండి" : "Open Page"}
-                    </span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {/* Active Listening Wave Animation */}
+          {/* Soundwave Bar Visualizer */}
           {isListening && (
-            <div className="p-4 bg-teal-50 border border-teal-200 rounded-2xl flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex gap-1 items-end h-5">
-                  <span className="w-1.5 bg-teal-600 h-3 animate-pulse rounded-full"></span>
-                  <span className="w-1.5 bg-teal-600 h-5 animate-pulse delay-75 rounded-full"></span>
-                  <span className="w-1.5 bg-teal-600 h-2 animate-pulse delay-150 rounded-full"></span>
-                  <span className="w-1.5 bg-teal-600 h-4 animate-pulse delay-100 rounded-full"></span>
-                </div>
-                <span className="text-sm font-bold text-teal-900">
-                  {currentLang === "te" ? "వింటున్నాను... మాట్లాడండి" : "Listening... please speak"}
-                </span>
-              </div>
-              <button
-                onClick={handleStopListening}
-                className="text-xs px-2.5 py-1 bg-red-100 text-red-700 font-bold rounded-lg hover:bg-red-200"
-              >
-                {currentLang === "te" ? "ఆపండి" : "Stop"}
-              </button>
+            <div className="flex items-end justify-center gap-1.5 h-6">
+              <span className="w-1.5 bg-teal-600 h-2 animate-bounce rounded-full"></span>
+              <span className="w-1.5 bg-teal-600 h-5 animate-bounce delay-100 rounded-full"></span>
+              <span className="w-1.5 bg-teal-600 h-3 animate-bounce delay-200 rounded-full"></span>
+              <span className="w-1.5 bg-teal-600 h-6 animate-bounce delay-75 rounded-full"></span>
+              <span className="w-1.5 bg-teal-600 h-4 animate-bounce delay-150 rounded-full"></span>
+              <span className="w-1.5 bg-teal-600 h-2 animate-bounce delay-300 rounded-full"></span>
             </div>
           )}
 
-          {/* Error Message */}
+          {/* Status / Transcript Box */}
+          <div className="w-full bg-white rounded-2xl p-4 border border-slate-200 shadow-xs min-h-[72px] flex flex-col justify-center items-center">
+            {liveTranscript ? (
+              <p className="text-sm font-bold text-slate-800 animate-fadeIn">
+                "{liveTranscript}"
+              </p>
+            ) : isListening ? (
+              <p className="text-xs text-teal-800 font-semibold animate-pulse">
+                {currentLang === "te"
+                  ? "మీ మాట వింటున్నాను... 'SOS', 'మందులు', లేదా 'అపాయింట్‌మెంట్లు' అని చెప్పండి"
+                  : "Listening... Say 'SOS', 'Prescription / Medicines', or 'Appointments'"}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500">
+                {currentLang === "te"
+                  ? "మైక్ బటన్ నొక్కి మాట్లాడండి లేదా క్రింద ఎంచుకోండి"
+                  : "Tap the microphone to speak, or select a keyword below"}
+              </p>
+            )}
+
+            {lastAction && (
+              <div className="mt-2 text-xs font-bold text-teal-800 flex items-center gap-1.5 bg-teal-50 px-3 py-1.5 rounded-xl border border-teal-200">
+                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                <span>{lastAction.displayText}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Voice Error notice if any */}
           {voiceError && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-xs text-amber-900">
+            <div className="w-full p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-xs text-amber-900 text-left">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>{voiceError}</span>
             </div>
           )}
         </div>
 
-        {/* Suggestion Chips */}
-        <div className="px-4 py-2.5 bg-white border-t border-slate-100">
-          <p className="text-[11px] font-semibold text-slate-500 mb-1.5">
-            {currentLang === "te" ? "తరచూ అడిగే ప్రశ్నలు (నొక్కండి):" : "Suggested questions (Tap to ask):"}
+        {/* High-Priority Voice Command Chips */}
+        <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
+          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 text-left">
+            {currentLang === "te" ? "ముఖ్య ఆదేశాలు (నొక్కండి లేదా చెప్పండి):" : "High-Priority Keywords (Tap or Say):"}
           </p>
-          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            {currentChips.map((chip, idx) => (
-              <button
-                key={idx}
-                onClick={() => handlePromptChipClick(chip)}
-                className="text-xs px-3 py-1.5 rounded-full bg-slate-100 hover:bg-teal-50 hover:text-teal-800 hover:border-teal-300 text-slate-700 font-medium whitespace-nowrap transition border border-slate-200 shrink-0"
-              >
-                {chip}
-              </button>
-            ))}
+
+          <div className="grid grid-cols-3 gap-2">
+            {/* SOS Trigger */}
+            <button
+              type="button"
+              onClick={() => handleQuickKeyword("SOS")}
+              className="p-2.5 rounded-2xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-black flex items-center justify-center gap-1.5 transition active:scale-95 shadow-xs"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>SOS (112)</span>
+            </button>
+
+            {/* Medicines Trigger */}
+            <button
+              type="button"
+              onClick={() => handleQuickKeyword("Medicines")}
+              className="p-2.5 rounded-2xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-xs"
+            >
+              <Pill className="w-3.5 h-3.5" />
+              <span>{currentLang === "te" ? "మందులు" : "Medicines"}</span>
+            </button>
+
+            {/* Appointments / Calendar Trigger */}
+            <button
+              type="button"
+              onClick={() => handleQuickKeyword("Appointments")}
+              className="p-2.5 rounded-2xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-xs"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>{currentLang === "te" ? "క్యాలెండర్" : "Calendar"}</span>
+            </button>
           </div>
         </div>
 
-        {/* Controls Footer */}
+        {/* Text Input Fallback Footer */}
         <div className="p-4 bg-white border-t border-slate-200/80">
-          <div className="flex items-center gap-3">
-            {/* Microphone Big Button */}
+          <form onSubmit={handleManualSubmit} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder={
+                currentLang === "te"
+                  ? "టైప్ చేయండి: SOS, మందులు, అపాయింట్‌మెంట్లు..."
+                  : "Type keyword: SOS, Medicines, Appointments..."
+              }
+              className="flex-1 px-4 py-2.5 rounded-2xl bg-slate-100 border border-slate-200 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-600 focus:bg-white transition"
+            />
             <button
-              onClick={isListening ? handleStopListening : handleStartListening}
-              className={`p-4 rounded-full text-white shadow-lg transition-all transform active:scale-95 shrink-0 ${
-                isListening
-                  ? "bg-red-600 hover:bg-red-700 animate-mic shadow-red-200"
-                  : "bg-teal-700 hover:bg-teal-800 shadow-teal-200"
-              }`}
-              title={isListening ? "Stop listening" : "Start speaking"}
+              type="submit"
+              disabled={!inputText.trim()}
+              className="px-4 py-2.5 rounded-2xl bg-teal-700 text-white disabled:opacity-40 hover:bg-teal-800 transition font-bold text-xs shrink-0 flex items-center gap-1"
             >
-              {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              <span>{currentLang === "te" ? "పంపు" : "Send"}</span>
+              <Send className="w-3.5 h-3.5" />
             </button>
-
-            {/* Text Input Fallback */}
-            <form onSubmit={handleTextSubmit} className="flex-1 flex items-center gap-2">
-              <input
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                placeholder={
-                  currentLang === "te"
-                    ? "లేదా ఇక్కడ ప్రశ్న టైప్ చేయండి..."
-                    : "Or type your question here..."
-                }
-                className="w-full px-4 py-3 rounded-2xl bg-slate-100 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-600 focus:bg-white transition"
-              />
-              <button
-                type="submit"
-                disabled={!inputText.trim()}
-                className="p-3 rounded-2xl bg-teal-700 text-white disabled:opacity-40 hover:bg-teal-800 transition shrink-0"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
+          </form>
         </div>
       </div>
     </div>

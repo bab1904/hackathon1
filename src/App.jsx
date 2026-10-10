@@ -169,6 +169,15 @@ export default function App() {
     setCompletedVaccines(storageService.getCompletedVaccines());
   };
 
+  const handleSwitchStage = (newStage) => {
+    const updated = { ...profile, stage: newStage };
+    setProfile(updated);
+    storageService.saveProfile(updated);
+    if (activePage === "asha" && newStage !== "asha") {
+      setActivePage("dashboard");
+    }
+  };
+
   const handleNavigatePage = (pageId) => {
     setActivePage(pageId);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -222,6 +231,7 @@ export default function App() {
               onNavigatePage={handleNavigatePage}
               onOpenVoice={() => setIsVoiceOpen(true)}
               onOpenEmergency={() => handleNavigatePage("emergency")}
+              onSwitchStage={handleSwitchStage}
               lang={lang}
             />
           )}
@@ -330,6 +340,8 @@ export default function App() {
           {activePage === "asha" && (
             <HealthWorkerDemo
               lang={lang}
+              onSwitchStage={handleSwitchStage}
+              onNavigatePage={handleNavigatePage}
             />
           )}
         </main>
