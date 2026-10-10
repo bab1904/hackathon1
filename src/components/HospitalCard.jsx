@@ -120,13 +120,13 @@ export default function HospitalCard({
           </button>
 
           {/* Call Hospital */}
-          <button
-            onClick={() => onCallClick(hospital.name, hospital.phone)}
+          <a
+            href={`tel:${hospital.phone.replace(/[^0-9+]/g, '')}`}
             className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shadow-md shadow-teal-100 transition flex items-center gap-1.5"
           >
             <Phone className="w-3.5 h-3.5" />
             <span>{lang === "te" ? "ఫోన్ చేయండి" : "Call Now"}</span>
-          </button>
+          </a>
         </div>
       </div>
     </div>

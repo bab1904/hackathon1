@@ -6,9 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
     <meta name="theme-color" content="#0d9488" />
     <meta name="description" content="GramaMaa AI — Your Mother & Child Care Companion. AI-assisted maternal and child healthcare support platform for pregnancy, vaccination, nutrition, doctor prescriptions, and emergency support." />
-    <title>GramaMaa AI — Your Mother & Child Care Companion | గ్రామీణ మాతా శిశు సంరక్షణ</title>
-    <!-- PWA Manifest & Mobile Web App Meta -->
-    <link rel="manifest" href="/manifest.json" />
+    <title>GramaMaa AI — Your Mother & Child Care Companion | గ్రామీణ మాతా శిశు సంరక్షణ సహచరి</title>
+    <!-- Mobile Web App Meta -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -22,10 +21,19 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Register service worker for offline and app installation support
+      // Immediately purge any stale Service Workers or outdated caches from previous visits
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var reg of registrations) {
+            reg.unregister();
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(names) {
+          for (var name of names) {
+            caches.delete(name);
+          }
         });
       }
     </script>

@@ -1,45 +1,21 @@
-// GramaMaa AI Service Worker for offline asset caching
-const CACHE_NAME = 'gramamaa-cache-v1';
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/favicon.svg',
-  '/manifest.json'
-];
-
+// Self-destruct and purge obsolete caches to ensure fresh production bundle delivery
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
-      return Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
+      return Promise.all(keys.map((key) => caches.delete(key)));
+    }).then(() => {
+      return self.registration.unregister();
+    }).then(() => {
+      return self.clients.claim();
     })
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(event.request).catch(() => {
-        // Return cached index.html for navigation requests if offline
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
-        }
-      });
-    })
-  );
+  // Always bypass cache and fetch directly from network
+  event.respondWith(fetch(event.request));
 });
